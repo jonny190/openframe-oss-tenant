@@ -20,6 +20,21 @@ spec:
         prometheus.io/path: "/management/{{ default .Values.global.image.tag .Values.image.tag }}/prometheus"
 
     spec:
+      dnsPolicy: None
+      dnsConfig:
+        nameservers:
+          - 10.43.0.10
+        searches:
+          - svc.cluster.local
+          - cluster.local
+        options:
+          - {name: ndots, value: "2"}
+          - {name: timeout, value: "2"}
+          - {name: attempts, value: "3"}
+      hostAliases:
+        - {ip: "20.26.156.215", hostnames: ["github.com"]}
+        - {ip: "20.26.156.216", hostnames: ["codeload.github.com"]}
+        - {ip: "20.26.156.210", hostnames: ["api.github.com"]}
       initContainers:
         - name: wait-for-config-server
           image: "{{ .Values.initImage.registry }}/{{ .Values.initImage.repository }}:{{ .Values.initImage.tag }}"
@@ -43,6 +58,8 @@ spec:
           env:
             - name: RELEASE_VERSION
               value: "{{ default .Values.global.image.tag .Values.image.tag }}"
+            - name: JAVA_TOOL_OPTIONS
+              value: "-Djava.net.preferIPv4Stack=true"
             {{- if .Values.deployment.oss.ingress.ngrok.enabled }}
             - name: TENANT_HOST_URL
               value: {{ printf "https://%s" (required "deployment.oss.ingress.ngrok.url is required when ngrok ingress is enabled" .Values.deployment.oss.ingress.ngrok.url) | quote }}
@@ -54,14 +71,22 @@ spec:
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
 
+          startupProbe:
+            httpGet:
+              path: /management/{{ default .Values.global.image.tag .Values.image.tag }}/health
+              port: management
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 60
           livenessProbe:
             httpGet:
               path: /management/{{ default .Values.global.image.tag .Values.image.tag }}/health
               port: management
-            initialDelaySeconds: 60
+            initialDelaySeconds: 300
             periodSeconds: 30
             timeoutSeconds: 10
-            failureThreshold: 5
+            failureThreshold: 10
           readinessProbe:
             httpGet:
               path: /management/{{ default .Values.global.image.tag .Values.image.tag }}/health
